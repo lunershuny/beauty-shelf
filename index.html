@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>我的美妝櫃 · 登入</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F2EBE3; --surface:#FBF8F4; --ink:#4B3B31; --muted:#9A8677; --line:#E7DCD0;
+  --accent:#9C7258; --accent-soft:#EFE3D7; --ok:#7A8A66; --bad:#B0655A;
+  --display:"LXGW WenKai TC","PingFang TC","Noto Sans TC",serif;
+  --body:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#29211C;--surface:#342A24;--ink:#F1E7DC;--muted:#B8A696;--line:#4A3D34;--accent:#D8B08F;--accent-soft:#4A3A2E;--ok:#B4C198;--bad:#E29A8C;color-scheme:dark}
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--ink);font-family:var(--body);padding:24px}
+.card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:24px;padding:28px 24px;text-align:center}
+h1{font-family:var(--display);font-size:30px;margin:0 0 4px}
+p{color:var(--muted);margin:0 0 20px;font-size:15px}
+input,button{font:inherit;width:100%;border-radius:12px;padding:12px}
+input{border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-bottom:10px}
+button{border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);margin-top:10px}
+button:disabled{opacity:.6}
+.or{margin:16px 0;color:var(--muted);font-size:13px}
+.msg{margin-top:14px;font-size:14px;min-height:1.4em}
+.msg.ok{color:var(--ok)} .msg.bad{color:var(--bad)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>我的美妝櫃</h1>
+
+  <!-- 未登入 -->
+  <div id="signedOut">
+    <p>輸入 Email，我們會寄一封登入連結給你</p>
+    <form id="emailForm">
+      <input type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+      <button type="submit" id="sendBtn">寄登入連結</button>
+    </form>
+    <div class="or">或</div>
+    <button class="ghost" id="googleBtn">用 Google 帳號登入</button>
+  </div>
+
+  <!-- 已登入 -->
+  <div id="signedIn" hidden>
+    <p id="who"></p>
+    <p id="dbCheck">檢查資料庫連線中…</p>
+    <button class="ghost" id="logoutBtn">登出</button>
+  </div>
+
+  <div class="msg" id="msg"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// ====== 只要改這兩行 ======
+const SUPABASE_URL = "https://bmoajmwyfbsdimltwoed.supabase.co";
+const SUPABASE_KEY = "sb_publishable_XkunuuWmv1t23K-r69PB7w_QDiw8ToU";
+// =========================
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const here = location.origin + location.pathname;
+const say = (t, cls = "") => { $("msg").textContent = t; $("msg").className = "msg " + cls; };
+
+$("emailForm").onsubmit = async e => {
+  e.preventDefault();
+  $("sendBtn").disabled = true; say("寄送中…");
+  const { error } = await sb.auth.signInWithOtp({
+    email: $("email").value.trim(),
+    options: { emailRedirectTo: here }
+  });
+  $("sendBtn").disabled = false;
+  if (error) say("寄送失敗：" + error.message, "bad");
+  else say("已寄出！去信箱點登入連結（可能在垃圾郵件裡）", "ok");
+};
+
+$("googleBtn").onclick = async () => {
+  const { error } = await sb.auth.signInWithOAuth({ provider: "google", options: { redirectTo: here } });
+  if (error) say("Google 登入還沒設定好：" + error.message, "bad");
+};
+
+$("logoutBtn").onclick = async () => { await sb.auth.signOut(); say("已登出"); };
+
+async function show(session) {
+  const user = session?.user;
+  $("signedOut").hidden = !!user;
+  $("signedIn").hidden = !user;
+  if (!user) return;
+  $("who").textContent = "已登入：" + user.email;
+  history.replaceState(null, "", here); // 清掉網址上的登入參數
+  const { count, error } = await sb.from("products").select("id", { count: "exact", head: true });
+  $("dbCheck").textContent = error
+    ? "資料庫連線失敗：" + error.message
+    : `資料庫連線正常，你目前有 ${count ?? 0} 個商品`;
+}
+
+sb.auth.onAuthStateChange((_event, session) => show(session));
+sb.auth.getSession().then(({ data }) => show(data.session));
+</script>
+</body>
+</html>
